@@ -1,5 +1,8 @@
 # openpi
 
+> [!NOTE]
+> This is the pinned OpenPI fork used by [Franka Stack](https://github.com/Loule0-0/franka-stack). The `franka-stack` branch preserves upstream history and adds the reference Franka policy integration; see [FRANKA_STACK.md](FRANKA_STACK.md). General OpenPI documentation below remains upstream-authored.
+
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 
 Currently, this repo contains three types of models:
