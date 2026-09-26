@@ -194,6 +194,7 @@ def train_step(
 def main(config: _config.TrainConfig):
     init_logging()
     logging.info(f"Running on: {platform.node()}")
+    source_fingerprint = _checkpoints.capture_franka_source_fingerprint(config)
 
     if config.batch_size % jax.device_count() != 0:
         raise ValueError(
@@ -222,6 +223,18 @@ def main(config: _config.TrainConfig):
         sharding=data_sharding,
         shuffle=True,
     )
+    dataset_manifest_sha256 = _checkpoints.capture_franka_dataset_manifest_sha256(config, data_loader.data_config())
+    if resuming:
+        latest_step = checkpoint_manager.latest_step()
+        if latest_step is None:
+            raise RuntimeError("Checkpoint manager reported resume mode without a saved step")
+        _checkpoints.verify_franka_checkpoint(
+            config.checkpoint_dir / str(latest_step),
+            train_config=config,
+            data_config=data_loader.data_config(),
+            source_fingerprint=source_fingerprint,
+            dataset_manifest_sha256=dataset_manifest_sha256,
+        )
     data_iter = iter(data_loader)
     batch = next(data_iter)
     logging.info(f"Initialized data loader:\n{training_utils.array_tree_to_info(batch)}")
@@ -270,7 +283,27 @@ def main(config: _config.TrainConfig):
         batch = next(data_iter)
 
         if (step % config.save_interval == 0 and step > start_step) or step == config.num_train_steps - 1:
-            _checkpoints.save_state(checkpoint_manager, train_state, data_loader, step)
+            _checkpoints.save_state(
+                checkpoint_manager,
+                train_state,
+                data_loader,
+                step,
+                train_config=config,
+                source_fingerprint=source_fingerprint,
+                dataset_manifest_sha256=dataset_manifest_sha256,
+            )
+            if source_fingerprint is not None:
+                # Orbax writes assets and params concurrently. Wait for the
+                # entire step to commit before hashing and sealing its model
+                # artifacts; an interrupted, unsealed step fails closed.
+                checkpoint_manager.wait_until_finished()
+                _checkpoints.finalize_franka_checkpoint(
+                    config.checkpoint_dir / str(step),
+                    train_config=config,
+                    data_config=data_loader.data_config(),
+                    source_fingerprint=source_fingerprint,
+                    dataset_manifest_sha256=dataset_manifest_sha256,
+                )
 
     logging.info("Waiting for checkpoint manager to finish")
     checkpoint_manager.wait_until_finished()

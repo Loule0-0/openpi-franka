@@ -3,6 +3,7 @@ import os
 import pathlib
 from typing import Any
 
+from franka_runtime import provenance as _provenance
 import jax.numpy as jnp
 
 import openpi.models.model as _model
@@ -42,8 +43,13 @@ def create_trained_policy(
         The function automatically detects whether the model is PyTorch-based by checking for the
         presence of "model.safensors" in the checkpoint directory.
     """
+    if _provenance.is_franka_policy_metadata(train_config.policy_metadata) and norm_stats is not None:
+        raise _provenance.ProvenanceError(
+            "Franka policies must load checkpoint-bound normalization statistics; norm_stats overrides are forbidden"
+        )
     repack_transforms = repack_transforms or transforms.Group()
     checkpoint_dir = download.maybe_download(str(checkpoint_dir))
+    _verify_franka_checkpoint_before_model_load(train_config, checkpoint_dir)
 
     # Check if this is a PyTorch model by looking for model.safetensors
     weight_path = os.path.join(checkpoint_dir, "model.safetensors")
@@ -91,4 +97,27 @@ def create_trained_policy(
         metadata=train_config.policy_metadata,
         is_pytorch=is_pytorch,
         pytorch_device=pytorch_device if is_pytorch else None,
+    )
+
+
+def _verify_franka_checkpoint_before_model_load(
+    train_config: _config.TrainConfig, checkpoint_dir: pathlib.Path
+) -> None:
+    """Bind Franka model loading to the exact config, assets, and source checkout."""
+
+    if not _provenance.is_franka_policy_metadata(train_config.policy_metadata):
+        return
+    repo_id = _provenance.validate_dataset_repo_id(train_config.data.repo_id)
+    asset_id = _provenance.validate_asset_id(train_config.data.assets.asset_id or repo_id)
+    model_type = train_config.model.model_type
+    _provenance.verify_checkpoint_provenance(
+        checkpoint_dir,
+        train_config_name=train_config.name,
+        dataset_repo_id=repo_id,
+        asset_id=asset_id,
+        model_type=getattr(model_type, "value", model_type),
+        model_action_dim=train_config.model.action_dim,
+        model_action_horizon=train_config.model.action_horizon,
+        policy_metadata=train_config.policy_metadata,
+        source_fingerprint=_provenance.capture_source_fingerprint(pathlib.Path(__file__)),
     )

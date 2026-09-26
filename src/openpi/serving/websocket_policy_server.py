@@ -21,7 +21,7 @@ class WebsocketPolicyServer:
     def __init__(
         self,
         policy: _base_policy.BasePolicy,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",
         port: int | None = None,
         metadata: dict | None = None,
     ) -> None:

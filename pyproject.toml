@@ -1,7 +1,7 @@
 [project]
 name = "openpi"
 version = "0.1.0"
-description = "Physical Intelligence open source repo"
+description = "OpenPI fork pinned for the Franka Stack reference policy backend."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -42,13 +42,12 @@ dependencies = [
 
 
 [project.urls]
-Repository = "https://github.com/Physical-Intelligence/openpi"
+Repository = "https://github.com/Loule0-0/openpi-franka"
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.4",
     "ruff>=0.8.6",
-    "pre-commit>=4.0.1",
     "ipykernel>=6.29.5",
     "ipywidgets>=8.1.5",
     "matplotlib>=3.10.0",
@@ -137,4 +136,4 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 markers = ["manual: should be run manually."]
-testpaths = ["src", "scripts", "packages"]
+testpaths = ["src", "scripts", "packages", "examples/franka_real"]

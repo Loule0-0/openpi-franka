@@ -6,6 +6,7 @@ import dataclasses
 import difflib
 import logging
 import pathlib
+import re
 from typing import Any, Literal, Protocol, TypeAlias
 
 import etils.epath as epath
@@ -23,6 +24,7 @@ import openpi.policies.libero_policy as libero_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
+import openpi.training.misc.franka_teleop_config as franka_teleop_config
 import openpi.training.misc.polaris_config as polaris_config
 import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
@@ -32,6 +34,16 @@ import openpi.transforms as _transforms
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
 Filter: TypeAlias = nnx.filterlib.Filter
+
+_SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _safe_path_component(label: str, value: object) -> str:
+    """Return one conservative filesystem component or fail before any write."""
+
+    if not isinstance(value, str) or value in {".", ".."} or _SAFE_PATH_COMPONENT.fullmatch(value) is None:
+        raise ValueError(f"{label} must be a single safe path component, got {value!r}")
+    return value
 
 
 @dataclasses.dataclass(frozen=True)
@@ -537,14 +549,28 @@ class TrainConfig:
     @property
     def assets_dirs(self) -> pathlib.Path:
         """Get the assets directory for this config."""
-        return (pathlib.Path(self.assets_base_dir) / self.name).resolve()
+        base = pathlib.Path(self.assets_base_dir).expanduser().resolve()
+        name = _safe_path_component("config name", self.name)
+        destination = (base / name).resolve()
+        if destination.parent != base:
+            raise ValueError(f"assets directory escapes its configured base: {destination}")
+        return destination
 
     @property
     def checkpoint_dir(self) -> pathlib.Path:
         """Get the checkpoint directory for this config."""
         if not self.exp_name:
             raise ValueError("--exp_name must be set")
-        return (pathlib.Path(self.checkpoint_base_dir) / self.name / self.exp_name).resolve()
+        base = pathlib.Path(self.checkpoint_base_dir).expanduser().resolve()
+        name = _safe_path_component("config name", self.name)
+        experiment = _safe_path_component("experiment name", self.exp_name)
+        config_root = (base / name).resolve()
+        if config_root.parent != base:
+            raise ValueError(f"checkpoint config directory escapes its configured base: {config_root}")
+        destination = (config_root / experiment).resolve()
+        if destination.parent != config_root:
+            raise ValueError(f"checkpoint directory escapes its config directory: {destination}")
+        return destination
 
     @property
     def trainable_filter(self) -> nnx.filterlib.Filter:
@@ -968,6 +994,7 @@ _CONFIGS = [
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),
     *polaris_config.get_polaris_configs(),
+    *franka_teleop_config.get_franka_teleop_configs(),
 ]
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
